@@ -98,13 +98,28 @@ In the UML I wrote `priority: str` on `Task`. While reviewing the skeleton I rea
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers three constraints:
+
+1. **Time budget** — `Owner.available_minutes` is a hard ceiling. No plan may exceed it; tasks that don't fit are placed in `DailyPlan.skipped` with an explanation.
+2. **Priority** — tasks are ranked HIGH → MEDIUM → LOW. Within each tier, insertion order is preserved (stable sort). High-priority tasks consume the time budget first, so critical care (medication, feeding) is never crowded out by optional activities (grooming, enrichment).
+3. **Fixed start times** — tasks with an explicit `scheduled_time` are placed at those exact clock positions and are not moved. Floating tasks (no scheduled time) are packed in after all fixed tasks have been placed.
+
+Priority was treated as the most important constraint because the consequence of skipping a HIGH task (missed medication) is far worse than skipping a LOW task (missed grooming). Time is a hard physical constraint, so it is enforced without exception. Fixed times exist to accommodate real-world anchors (e.g., a vet appointment at 2 PM) that cannot be rescheduled by the algorithm.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+**Tradeoff: greedy priority-first scheduling is simple but suboptimal.**
+
+The scheduler picks tasks from highest to lowest priority and takes each one as long as it fits in the remaining budget — a classic greedy algorithm.  This is fast (O(n)) and easy to read, but it can miss better plans.
+
+*Example:* suppose the budget is 60 minutes and three tasks are available — A (HIGH, 55 min), B (MEDIUM, 30 min), C (MEDIUM, 25 min).  The greedy algorithm schedules only A (55 min), leaving 5 min unused and skipping B and C.  An optimal knapsack solver would instead schedule B + C (55 min total), completing more tasks in the same window.
+
+This tradeoff is reasonable here because:
+- Pet care priorities are genuine — medication really does outrank grooming.
+- The number of daily tasks is small (typically < 20), so suboptimal outcomes are rare and minor.
+- Greedy output is predictable and explainable to the owner: "high-priority tasks were scheduled first."  A knapsack result might surprise users by dropping a HIGH task to fit two MEDIUM ones.
+
+A future improvement would be a two-pass approach: always lock in all HIGH tasks first, then run a knapsack over the remaining budget for MEDIUM and LOW tasks.
 
 ---
 
