@@ -127,13 +127,21 @@ A future improvement would be a two-pass approach: always lock in all HIGH tasks
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+AI assistance (Claude Code / VS Code Copilot) was used at three distinct stages:
+
+1. **Design brainstorming** — asking "What are the most important edge cases for a pet scheduler with sorting and recurring tasks?" produced a structured list of happy paths and edge cases (same-start-time conflicts, adjacent-but-not-overlapping tasks, tasks spanning midnight) that I wouldn't have enumerated as quickly alone.
+
+2. **Algorithm implementation** — the AI drafted the interval-overlap conflict-detection logic and the `timedelta` recurring-task pattern. Both were small, self-contained functions that were easy to read and verify in isolation before integrating them.
+
+3. **Test generation** — prompting with the module's source file and asking for test functions for each new method produced accurate stubs quickly. The generated tests still required human review to confirm the assertions matched intended behavior (not just what the code happened to do).
+
+The most effective prompt pattern was: *"Given this method signature and docstring, write pytest functions that cover one happy path and two edge cases."* Scoping to a single method kept suggestions focused and reviewable.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+One AI suggestion that was modified: the first draft of `_sort_by_time` used `scheduled_time` (an integer) directly as the sort key rather than converting it to a `"HH:MM"` string.  The integer approach works, but the assignment specifically asked for a lambda on string keys to demonstrate that zero-padded strings sort chronologically.  I kept the string-key version and added an explanatory docstring showing the comparison (`"07:30" < "08:00" < "14:00"`) so a future reader understands *why* the string approach is valid.
+
+Verification method: I added `test_sort_by_time_returns_chronological_order` with tasks inserted in reverse time order and asserted the exact output sequence.  The test failing before the fix and passing after it gave me confidence the logic was correct, not just plausible.
 
 ---
 
@@ -141,13 +149,23 @@ A future improvement would be a two-pass approach: always lock in all HIGH tasks
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+21 automated tests cover four algorithm areas:
+
+- **Sorting** — tasks inserted in reverse chronological order are returned sorted earliest → latest; unscheduled tasks always appear last; an empty list is handled without error.
+- **Recurrence** — `complete()` on a `"daily"` task returns a new `Task` with `due_date = today + timedelta(days=1)`; `"weekly"` uses `timedelta(weeks=1)`; non-recurring tasks return `None`; `Pet.complete_task()` automatically appends the new instance to the pet's list.
+- **Conflict detection** — same-start-time tasks are flagged; overlapping windows are flagged; tasks that only share a boundary (A ends == B starts) are correctly *not* flagged; conflicts across different pets are caught; the function never raises an exception.
+- **Filtering** — filtering by pet name, by completion status, and by both criteria combined (AND logic).
+- **Edge cases** — owner with pets but no tasks produces an informative explanation rather than an error; `generate_plan` includes the conflict list in the returned `DailyPlan`.
+
+These tests matter because they verify the *decisions* the scheduler makes, not just that the code runs.  A greedy algorithm that silently drops the wrong tasks, or a conflict detector that crashes instead of warning, would both pass a "does it execute?" check but fail these behavioral assertions.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+**4 / 5 stars.**  All named behaviors and edge cases pass.  Remaining gaps:
+
+- Tasks whose duration crosses midnight (e.g., `scheduled_time=23*60`, `duration=90`) — `end_time()` would exceed 1440 minutes; the overlap check is not tested for this.
+- Owner with zero pets — `get_all_tasks()` returns `[]` and `generate_plan` would return the "no tasks" plan, but this path has no dedicated test.
+- `available_minutes` smaller than every single task — the budget logic should skip everything; untested.
 
 ---
 
